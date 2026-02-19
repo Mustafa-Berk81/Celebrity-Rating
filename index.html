@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ünlü Oyuncu Puanlama</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="loading.css">
+    <link rel="stylesheet" href="card-flip-styles.css">
+    <link rel="stylesheet" href="voted-stats.css">
+    <link rel="stylesheet" href="toast.css">
+
+    <!-- SEO Meta Tags -->
+    <meta name="description"
+        content="En beğendiğiniz ünlü oyuncuları oylayın, sıralamayı belirleyin! Türkiye'nin en popüler oyuncu oylama platformu.">
+    <meta name="keywords" content="ünlüler, oyuncular, oylama, anket, popüler, sıralama, dizi, film">
+    <meta name="author" content="Mustafa">
+    <meta property="og:title" content="Ünlü Oyuncu Puanlama">
+    <meta property="og:description" content="Favori oyuncuna oy ver, sıralamayı değiştir!">
+    <meta property="og:type" content="website">
+</head>
+
+<body>
+    <div class="background-gradient"></div>
+
+    <div class="container">
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <header class="header">
+                <h1 class="title">
+                    <span class="title-icon">🎬</span>
+                    Ünlü Oyuncu Puanlama
+                </h1>
+                <p class="subtitle">Favori oyuncularınızı puanlayın!</p>
+
+
+                <!-- Theme Switcher -->
+                <div class="theme-switcher">
+                    <label for="themeSelect">🎨 Tema:</label>
+                    <select id="themeSelect" class="theme-select">
+                        <option value="gradient">Gradient (Varsayılan)</option>
+                        <option value="light">Açık</option>
+                        <option value="dark">Koyu</option>
+                    </select>
+                </div>
+
+                <!-- Category Filter -->
+                <div class="category-filter">
+                    <button class="category-btn active" data-category="all">
+                        Hepsi (150)
+                    </button>
+                    <button class="category-btn" data-category="male">
+                        👨 Erkek (75)
+                    </button>
+                    <button class="category-btn" data-category="female">
+                        👩 Kadın (75)
+                    </button>
+                </div>
+
+                <!-- Add More Celebrities Button -->
+                <button class="add-more-btn" id="addCelebsBtn" title="Rastgele 10 ünlü ekle">
+                    🎲 Rastgele 10 Ünlü Ekle
+                </button>
+
+                <!-- Daily Duel Button -->
+                <button class="duel-btn" id="openDuelBtn" title="Günün Düellosu">
+                    ⚔️ Günün Düellosu
+                </button>
+
+                <!-- Search Bar -->
+                <div class="search-container" id="searchContainer">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="searchInput" class="search-input"
+                            placeholder="Ünlü ara... (örn: Leonardo DiCaprio)" autocomplete="off">
+                        <button class="search-clear-btn" id="searchClearBtn" style="display: none;">✕</button>
+                    </div>
+                    <div class="search-results" id="searchResults" style="display: none;"></div>
+                </div>
+            </header>
+
+            <!-- Celebrity Card -->
+            <div class="celebrity-display" id="celebrityDisplay">
+                <!-- Dinamik olarak oluşturulacak -->
+            </div>
+
+            <!-- Navigation -->
+            <div class="navigation" id="navigation">
+                <button class="nav-btn" id="prevBtn">
+                    <span>←</span> Önceki
+                </button>
+                <!-- Progress indicators removed as per user request -->
+                <button class="nav-btn" id="nextBtn">
+                    Sonraki <span>→</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Leaderboard Sidebar -->
+        <aside class="leaderboard-sidebar" id="leaderboardSidebar">
+            <div class="leaderboard-horizontal-resize-handle" id="leaderboardHorizontalResizeHandle">
+                <div class="horizontal-resize-indicator">⋮</div>
+            </div>
+            <div class="leaderboard-header" id="leaderboardDragHandle">
+                <div class="drag-indicator">⋮⋮</div>
+                <div class="leaderboard-header-content">
+                    <h2 class="leaderboard-title">🏆 Liderlik Tablosu</h2>
+                    <div class="leaderboard-tabs">
+                        <button class="tab-btn active" data-tab="global">Genel</button>
+                        <button class="tab-btn" data-tab="personal">Senin</button>
+                    </div>
+                </div>
+            </div>
+            <div class="leaderboard-list" id="leaderboardList">
+                <!-- Dinamik olarak oluşturulacak -->
+            </div>
+            <div class="leaderboard-resize-handle" id="leaderboardResizeHandle">
+                <div class="resize-indicator">⋯</div>
+            </div>
+            <div class="leaderboard-footer">
+                <button id="viewBadgesBtn" class="view-all-btn"
+                    style="margin-bottom: 8px; background: rgba(255, 215, 0, 0.15); color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.3);">
+                    🎖️ Rozetlerim
+                </button>
+                <button id="viewFullLeaderboardBtn" class="view-all-btn">
+                    Tümünü Gör (100+)
+                </button>
+            </div>
+        </aside>
+
+        <!-- Dedicated Mobile Leaderboard Panel -->
+        <div class="mobile-leaderboard-panel" id="mobileLeaderboardPanel">
+            <div class="mobile-leaderboard-header">
+                <h2 class="leaderboard-title">🏆 Liderlik Tablosu</h2>
+                <div class="leaderboard-tabs">
+                    <button class="tab-btn active" data-tab="global">Genel</button>
+                    <button class="tab-btn" data-tab="personal">Senin</button>
+                </div>
+            </div>
+            <div class="leaderboard-list" id="mobileLeaderboardList">
+                <!-- Dinamik olarak oluşturulacak -->
+            </div>
+            <div class="leaderboard-footer">
+                <button id="viewFullLeaderboardBtnMobile" class="view-all-btn">
+                    Tümünü Gör (100+)
+                </button>
+                <button id="shareStatsBtnMobile" class="view-all-btn" style="margin-top:8px; background: #667eea;">
+                    📤 Paylaş
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Navigation -->
+        <nav class="mobile-bottom-nav" id="mobileBottomNav">
+            <button class="mobile-nav-btn active" data-view="voting">
+                <span class="mobile-nav-icon">🎯</span>
+                <span class="mobile-nav-label">Oylama</span>
+            </button>
+            <button class="mobile-nav-btn" data-view="leaderboard">
+                <span class="mobile-nav-icon">🏆</span>
+                <span class="mobile-nav-label">Liderlik</span>
+            </button>
+            <button class="mobile-nav-btn" data-view="badges">
+                <span class="mobile-nav-icon">🎖️</span>
+                <span class="mobile-nav-label">Rozetler</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Result Modal -->
+    <div class="modal" id="resultModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Puanınız Kaydedildi!</h3>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dinamik içerik -->
+            </div>
+            <button class="modal-btn" id="modalCloseBtn">Devam Et</button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <p>&copy; 2026 Ünlüleri Oyla. Tüm hakları saklıdır.</p>
+            <div class="footer-links">
+                <a href="#" id="contactLink">İletişim / Telif Hakkı</a>
+                <span class="separator">•</span>
+                <a href="#">Gizlilik Politikası</a>
+            </div>
+            <p class="footer-disclaimer">Bu sitedeki görseller tanıtım amaçlıdır.</p>
+        </div>
+    </footer>
+
+    <!-- Full Leaderboard Modal -->
+    <div class="modal full-leaderboard-modal" id="fullLeaderboardModal">
+        <div class="modal-content large-modal">
+            <div class="modal-header">
+                <h3>🏆 Liderlik Tablosu</h3>
+                <button class="modal-close-icon" id="fullLeaderboardCloseBtn">✕</button>
+            </div>
+            <!-- Modal Tabs (Global vs Personal) -->
+            <div class="leaderboard-tabs modal-tabs">
+                <button class="tab-btn active" data-modal-tab="global">Genel</button>
+                <button class="tab-btn" data-modal-tab="personal">Senin</button>
+            </div>
+
+            <!-- Modal Filters -->
+            <div class="modal-filters">
+                <button class="modal-filter-btn active" data-filter="all">Hepsi</button>
+                <button class="modal-filter-btn" data-filter="male">👨 Erkek</button>
+                <button class="modal-filter-btn" data-filter="female">👩 Kadın</button>
+            </div>
+            <div class="modal-body">
+                <div class="full-leaderboard-list" id="fullLeaderboardList">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duel Modal -->
+    <div class="modal" id="duelModal">
+        <div class="modal-content duel-modal-content">
+            <div class="modal-header">
+                <h3>⚔️ Günün Düellosu</h3>
+                <button class="modal-close-icon" id="duelCloseBtn">✕</button>
+            </div>
+            <p class="duel-subtitle">Bugün senin favorin hangisi?</p>
+
+            <div class="duel-container" id="duelContainer">
+                <!-- Duel Content Injected Here -->
+            </div>
+
+            <div class="duel-timer" id="duelTimer">
+                Sonraki düello: <span id="duelCountdown">--:--:--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Badges Modal -->
+    <div class="modal" id="badgesModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🎖️ Rozetlerim</h3>
+                <button class="modal-close-icon" id="badgesCloseBtn">✕</button>
+            </div>
+            <div class="badges-grid" id="badgesList">
+                <!-- Badges will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p>Oyuncu fotoğrafları yükleniyor...</p>
+    </div>
+
+    <!-- Scripts -->
+    <!-- Supabase - Using specific stable version for reliability -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0"></script>
+    <!-- HTML2Canvas for caching -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Share Modal -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content share-modal-content">
+            <div class="modal-header">
+                <h3>📤 İstatistiklerini Paylaş</h3>
+                <button class="modal-close-icon" id="shareCloseBtn">✕</button>
+            </div>
+
+            <div class="share-preview-container">
+                <p class="share-instruction">Görsel oluşturuluyor...</p>
+                <!-- This container is visible to user with the generated image -->
+                <div id="shareResult"></div>
+            </div>
+
+            <!-- The actual HTML element to be captured (Hidden from view usually, but simpler to just render in modal then capture) -->
+            <div id="shareCardToCapture" class="share-card-template">
+                <div class="share-card-header">
+                    <span class="share-card-title">Ünlü Oyuncu Puanlama</span>
+                    <span class="share-card-date">17.02.2026</span>
+                </div>
+
+                <div class="share-card-stats-grid">
+                    <div class="share-stat-box">
+                        <span class="share-stat-val" id="shareTotalVotes">0</span>
+                        <span class="share-stat-lbl">Oylanan</span>
+                    </div>
+                    <div class="share-stat-box">
+                        <span class="share-stat-val" id="shareBadgesCount">0</span>
+                        <span class="share-stat-lbl">Rozet</span>
+                    </div>
+                </div>
+
+                <div class="share-card-favs">
+                    <h4>⭐ En Favorilerim</h4>
+                    <div class="share-fav-list" id="shareFavList">
+                        <!-- Dynamic -->
+                    </div>
+                </div>
+
+                <div class="share-card-footer">
+                    <p>Sen de oyla! 🎬</p>
+                </div>
+            </div>
+
+            <div class="share-actions">
+                <button class="share-download-btn" id="downloadShareBtn">⬇️ İndir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration and services -->
+    <script src="config.js"></script>
+    <script src="supabase-config.js"></script>
+    <script src="celebrity-service.js"></script>
+
+    <!-- Data and main script -->
+    <script src="toast.js"></script>
+    <script src="tmdb-service.js"></script>
+    <script src="celebrities-data.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,114 @@
+/* Toast Container Styles */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+/* Base Toast Styles */
+.toast {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: 4px solid;
+    border-radius: 12px;
+    padding: 16px 24px;
+    min-width: 300px;
+    max-width: 400px;
+    color: white;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    pointer-events: auto;
+
+    /* Animation defaults */
+    transform: translateX(120%);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.toast.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast.hide {
+    transform: translateX(120%);
+    opacity: 0;
+}
+
+/* Toast Variants */
+.toast.success {
+    border-left-color: #00c851;
+    background: linear-gradient(to right, rgba(0, 200, 81, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+.toast.error {
+    border-left-color: #ff4444;
+    background: linear-gradient(to right, rgba(255, 68, 68, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+.toast.info {
+    border-left-color: #33b5e5;
+    background: linear-gradient(to right, rgba(51, 181, 229, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+.toast.warning {
+    border-left-color: #ffbb33;
+    background: linear-gradient(to right, rgba(255, 187, 51, 0.1), rgba(255, 255, 255, 0.05));
+}
+
+/* Icon & Content Layout */
+.toast-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.toast-icon {
+    font-size: 1.2rem;
+}
+
+.toast-message {
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+/* Progress Bar (Optional) */
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.3);
+    width: 100%;
+    border-radius: 0 0 12px 12px;
+    animation: progressBar linear forwards;
+}
+
+@keyframes progressBar {
+    to {
+        width: 0%;
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+    #toast-container {
+        top: auto;
+        bottom: 20px;
+        right: 20px;
+        left: 20px;
+    }
+
+    .toast {
+        min-width: auto;
+        width: 100%;
+    }
+}
