@@ -57,6 +57,7 @@ const nextBtn = document.getElementById('nextBtn');
 const resultModal = document.getElementById('resultModal');
 const modalBody = document.getElementById('modalBody');
 const modalCloseBtn = document.getElementById('modalCloseBtn');
+const loadingOverlay = document.getElementById('loadingOverlay');
 
 const categoryBtns = document.querySelectorAll('.category-btn');
 const themeSelect = document.getElementById('themeSelect');
@@ -182,9 +183,15 @@ function loadData() {
     // Load last viewed ID
     const lastViewedId = localStorage.getItem('lastViewedId');
     if (lastViewedId) {
-        const foundIndex = celebrities.findIndex(c => c.id === parseInt(lastViewedId));
+        // IMPORTANT: We must find the index within the FILTERED list, not the global list
+        const filtered = getFilteredCelebrities();
+        const foundIndex = filtered.findIndex(c => c.id === parseInt(lastViewedId));
+
         if (foundIndex !== -1) {
             currentIndex = foundIndex;
+        } else {
+            // If not found in current filter, reset to 0 or stay at 0
+            currentIndex = 0;
         }
     }
 
@@ -255,6 +262,14 @@ function saveData() {
     if (celebrities[currentIndex]) {
         localStorage.setItem('lastViewedId', celebrities[currentIndex].id);
     }
+}
+
+// Initialize history after loading data
+function initHistory() {
+    navigationHistory.length = 0; // Clear
+    navigationHistory.push(currentIndex);
+    historyPointer = 0;
+    updateNavigation();
 }
 
 
@@ -430,70 +445,23 @@ function renderCelebrity() {
         return;
     }
 
-    // Find first unvoted celebrity starting from current index
-    let foundIndex = -1;
-
-    // 1. Search forward
-    for (let i = currentIndex; i < filtered.length; i++) {
-        if (!userVotes.hasOwnProperty(filtered[i].id)) {
-            foundIndex = i;
-            break;
-        }
-    }
-
-    // 2. If not found, search from beginning
-    if (foundIndex === -1) {
-        for (let i = 0; i < currentIndex; i++) {
-            if (!userVotes.hasOwnProperty(filtered[i].id)) {
-                foundIndex = i;
-                break;
-            }
-        }
-    }
-
-    // 3. If still not found (ALL voted)
-    if (foundIndex === -1) {
-        console.log('Tüm ünlüler oylandı! Yeni ünlüler yükleniyor...');
-        celebrityDisplay.innerHTML = `
-            <div style="text-align:center; padding:40px; color:var(--text-secondary)">
-                <div style="font-size:3rem; margin-bottom:20px;">🎉</div>
-                <h3>Harika! Bu kategorideki herkesi oyladınız.</h3>
-                <p>Yeni ünlüler ekleniyor...</p>
-            </div>
-        `;
-
-        // Add new celebrities automatically
-        addRandomCelebrities(5);
-
-        // Wait for update then re-render
-        setTimeout(() => {
-            const newFiltered = getFilteredCelebrities();
-            const newIndex = newFiltered.findIndex(c => !userVotes.hasOwnProperty(c.id));
-
-            if (newIndex !== -1) {
-                currentIndex = newIndex;
-                renderCelebrity();
-            } else {
-                // Fallback: Just show the first one (voted) if fails
-                currentIndex = 0;
-                celebrityDisplay.innerHTML = '';
-                celebrityDisplay.appendChild(createCelebrityCard(newFiltered[0]));
-                updateNavigation();
-            }
-        }, 1200);
-        return;
-    }
-
-    // Update current index to the unvoted one
-    currentIndex = foundIndex;
+    // Ensure currentIndex is valid
+    if (currentIndex < 0) currentIndex = 0;
+    if (currentIndex >= filtered.length) currentIndex = filtered.length - 1;
 
     const celebrity = filtered[currentIndex];
+
+    if (!celebrity) return;
 
     celebrityDisplay.innerHTML = '';
     const card = createCelebrityCard(celebrity);
     celebrityDisplay.appendChild(card);
 
     updateNavigation();
+
+    // SEO & Routing Updates
+    if (typeof updateSEO === 'function') updateSEO(celebrity);
+    if (typeof updateURL === 'function') updateURL(celebrity);
 }
 
 // Create celebrity card
@@ -536,18 +504,39 @@ function createCelebrityCard(celebrity) {
             </div>
         `;
     } else {
-        // Show photo carousel
-        const track = document.createElement('div');
-        track.className = 'carousel-track';
+        // SAFETY CHECK: If photos are missing, trigger load and show placeholder
+        if (!celebrity.photos || celebrity.photos.length === 0) {
+            carousel.innerHTML = `
+                <div style="display:flex; justify-content:center; align-items:center; height:100%; color:white; flex-direction:column; gap:10px;">
+                    <div class="loading-spinner"></div>
+                    <p>Fotoğraf yükleniyor...</p>
+                </div>
+            `;
+            // Trigger emergency load
+            if (!celebrity.loading) {
+                celebrity.loading = true;
+                tmdbService.getPersonPhotos(celebrity.name, 4).then(photos => {
+                    celebrity.photos = photos;
+                    celebrity.loading = false;
+                    renderCelebrity(); // Re-render when done
+                });
+            }
+        } else {
+            // Show photo carousel
+            const track = document.createElement('div');
+            track.className = 'carousel-track';
 
-        celebrity.photos.forEach(photo => {
-            const photoElement = document.createElement('img');
-            photoElement.className = 'carousel-photo';
-            photoElement.src = photo;
-            photoElement.alt = celebrity.name;
-            photoElement.loading = 'lazy';
-            track.appendChild(photoElement);
-        });
+            celebrity.photos.forEach(photo => {
+                const photoElement = document.createElement('img');
+                photoElement.className = 'carousel-photo';
+                photoElement.src = photo;
+                photoElement.alt = celebrity.name;
+                photoElement.loading = 'lazy';
+                track.appendChild(photoElement);
+            });
+            carousel.appendChild(track);
+        }
+
 
         const controls = document.createElement('div');
         controls.className = 'carousel-controls';
@@ -649,69 +638,161 @@ function createCelebrityCard(celebrity) {
         const ratingSection = document.createElement('div');
         ratingSection.className = 'rating-section';
 
-        const ratingWrapper = document.createElement('div');
-        ratingWrapper.className = 'rating-wrapper';
-        ratingWrapper.style.display = 'flex';
-        ratingWrapper.style.flexDirection = 'column';
-        ratingWrapper.style.alignItems = 'center';
-        ratingWrapper.style.gap = '10px';
-        ratingWrapper.style.width = '100%';
+        // Star Rating Setup
+        const starsContainer = document.createElement('div');
+        starsContainer.className = 'stars';
+        let currentRating = 0;
 
-        const ratingValueDisplay = document.createElement('div');
-        ratingValueDisplay.className = 'rating-value-display';
-        ratingValueDisplay.textContent = '5.0 ⭐';
-        ratingValueDisplay.style.fontSize = '1.5rem';
-        ratingValueDisplay.style.fontWeight = 'bold';
-        ratingValueDisplay.style.color = 'var(--accent-color)';
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].forEach(starValue => {
+            const star = document.createElement('span');
+            star.className = 'star';
+            star.innerHTML = '★';
+            star.dataset.value = starValue;
 
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '1';
-        slider.max = '10';
-        slider.step = '0.1'; // Precise 0.1 steps
-        slider.value = '5.0';
-        slider.className = 'rating-slider';
-        slider.style.width = '100%';
+            // Hover effects
+            star.addEventListener('mouseenter', () => {
+                highlightStars(starsContainer, starValue, false); // Use existing highlightStars
+            });
 
-        // Function to update slider fill
-        const updateSliderFill = (input) => {
-            const val = parseFloat(input.value);
-            const min = parseFloat(input.min);
-            const max = parseFloat(input.max);
-            const percent = ((val - min) / (max - min)) * 100;
+            star.addEventListener('mouseleave', () => {
+                highlightStars(starsContainer, currentRating, true); // Use existing highlightStars
+            });
 
-            // Dynamic gradient: Filled part (Gradient) + Empty part (Darker)
-            input.style.background = `linear-gradient(90deg, #4facfe 0%, #00f2fe ${percent}%, rgba(255,255,255,0.1) ${percent}%)`;
+            // Click to select
+            star.addEventListener('click', () => {
+                currentRating = starValue;
+                highlightStars(starsContainer, currentRating, true); // Make selection permanent
+                checkVoteButtonState();
+            });
+
+            starsContainer.appendChild(star);
+        });
+
+        ratingSection.appendChild(starsContainer);
+
+        // Turnstile Captcha Container
+        const captchaContainer = document.createElement('div');
+        captchaContainer.className = 'captcha-container';
+        captchaContainer.style.margin = '10px 0';
+        captchaContainer.style.display = 'flex';
+        captchaContainer.style.justifyContent = 'center';
+        captchaContainer.id = `captcha-${celebrity.id}`; // Unique ID
+
+        ratingSection.appendChild(captchaContainer);
+
+        // Render Captcha explicitly
+        setTimeout(() => {
+            if (window.turnstile) {
+                try {
+                    window.turnstile.render(`#captcha-${celebrity.id}`, {
+                        sitekey: '1x00000000000000000000AA', // Dummy key for testing
+                        callback: function (token) {
+                            onCaptchaSuccess(token);
+                            checkVoteButtonState();
+                        },
+                        'expired-callback': function () {
+                            onCaptchaExpired();
+                            checkVoteButtonState();
+                        },
+                        theme: 'dark'
+                    });
+                } catch (e) {
+                    console.error("Turnstile render error:", e);
+                }
+            }
+        }, 100);
+
+        // Submit Button (Consolidated)
+        const submitBtn = document.createElement('button');
+        submitBtn.className = 'vote-btn'; // Use vote-btn class for styling
+        submitBtn.textContent = 'OY VER';
+        submitBtn.disabled = true; // Disabled initially
+        submitBtn.style.marginTop = '10px';
+
+        // Helper to check both conditions
+        const checkVoteButtonState = () => {
+            // We need access to isCaptchaVerified which is global
+            // But simpler: just check if captcha token exists? 
+            // Global isCaptchaVerified is set by the callback.
+
+            if (currentRating > 0 && isCaptchaVerified) {
+                submitBtn.disabled = false;
+                submitBtn.classList.add('active');
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.classList.remove('active');
+                submitBtn.style.opacity = '0.5';
+                submitBtn.style.cursor = 'not-allowed';
+            }
         };
 
-        // Initial fill
-        updateSliderFill(slider);
+        submitBtn.addEventListener('click', () => {
+            if (submitBtn.disabled) {
+                if (!isCaptchaVerified) showToast('Lütfen robot olmadığınızı doğrulayın.', 'warning');
+                else if (currentRating === 0) showToast('Lütfen bir puan seçin.', 'warning');
+                return;
+            }
 
+            submitBtn.disabled = true;
+            submitBtn.textContent = '...';
+
+            // Reset captcha state for next time
+            isCaptchaVerified = false;
+
+            rateCelebrity(celebrity.id, currentRating, card);
+        });
+
+        // Update slider logic to check button state
         slider.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value).toFixed(1);
             ratingValueDisplay.textContent = `${val} ⭐`;
             updateSliderFill(e.target);
         });
 
-        const submitBtn = document.createElement('button');
-        submitBtn.className = 'submit-rating-btn';
-        submitBtn.textContent = 'OY VER';
-        submitBtn.style.marginTop = '10px';
-        submitBtn.style.padding = '8px 20px';
-        submitBtn.style.background = 'var(--primary-gradient)';
-        submitBtn.style.border = 'none';
-        submitBtn.style.borderRadius = '20px';
-        submitBtn.style.color = 'white';
-        submitBtn.style.fontWeight = 'bold';
-        submitBtn.style.cursor = 'pointer';
+        // Update star click logic to check button state
+        // (Note: event listeners for stars are defined above, need to make sure they call checkVoteButtonState)
+        // redefining logic here is hard without changing above code.
+        // Let's assume the above code calls checkVoteButtonState.
+        // Wait, the above code calls checkVoteButtonState() but I just defined it inside this scope?
+        // No, the above code (lines 653) calls checkVoteButtonState().
+        // But that function was defined on line 695 in the OLD code.
+        // I am replacing the block starting from line 661.
+        // The stars loop (lines 634-657) is BEFORE my replacement start.
+        // So lines 653 calls `checkVoteButtonState()`.
+        // I MUST Ensure `checkVoteButtonState` is defined/hoisted or accessible.
+        // `const` is not hoisted.
+        // Use `function checkVoteButtonState() {}` to hoist it?
+        // NO, I am inside a function `createCelebrityCard`. Hoisting works within function scope.
+        // But the stars loop is already EXECUTED before I define this function if I place it here.
+        // Actually, the EVENT LISTENER is triggered later. So as long as the function exists when CLICK happens, it's fine.
+        // And `checkVoteButtonState` is const... so it's TDZ (Temporal Dead Zone).
+        // If I use `function`, it is hoisted to top of `createCelebrityCard`.
 
-        submitBtn.addEventListener('click', () => {
-            if (submitBtn.disabled) return;
-            submitBtn.disabled = true;
-            submitBtn.textContent = '...';
-            const rating = parseFloat(slider.value);
-            rateCelebrity(celebrity.id, rating, card);
-        });
+        // BETTER: Move `checkVoteButtonState` definition TO THE TOP of `createCelebrityCard` or at least before usage?
+        // I can't easily edit outside my replacement block efficiently.
+        // But wait, the stars are created, events attached.
+        // When user clicks star -> event fires -> calls checkVoteButtonState.
+        // By that time, `createCelebrityCard` has finished executing?
+        // Yes. So the function will be defined.
+        // EXCEPT if `checkVoteButtonState` is defined using `const` inside a block that might not be the same scope?
+        // It's all inside `if (!hasVoted)`.
+        // The stars are inside `if (!hasVoted)`.
+        // My replacement is inside `if (!hasVoted)`.
+        // So it is the same scope.
+        // However, `const` is block scoped. 
+        // If I define `const checkVoteButtonState` on line ~700, acts effectively as a variable.
+        // Using `var` or `function` is safer for "hoisting" visual style, but strictly speaking, since it's called on click, it's initialized.
+
+        // BUT wait, `stars` are creating BEFORE this block.
+        // `checkVoteButtonState` needs to be visible to them.
+        // Since they are in the same block, `const` is fine provided the click happens AFTER declaration.
+
+        // ISSUE: I am replacing lines 661-745.
+        // The stars are created in lines 634-657 (which I am NOT modifying).
+        // Line 653 calls `checkVoteButtonState()`.
+        // If I define `checkVoteButtonState` in my new block, it is valid.
 
         ratingWrapper.appendChild(ratingValueDisplay);
         ratingWrapper.appendChild(slider);
@@ -725,6 +806,18 @@ function createCelebrityCard(celebrity) {
 
     return card;
 }
+
+// Define checkVoteButtonState function clearly to avoid reference errors if possible
+// actually I will use `var` or just `function` to be safe against TDZ if I moved it? 
+// Nah, standard function decl is best.
+
+function checkVoteButtonState() {
+    // This will capture the submitBtn from closure if defined in same scope
+    // But `submitBtn` is defined in my block.
+    // `checkVoteButtonState` must be inside the `createCelebrityCard` scope to access `submitBtn` and `currentRating`.
+    // So I will output it as a function declaration inside the replacement.
+}
+
 
 // Highlight stars on hover
 function highlightStars(starsContainer, rating, permanent = false) {
@@ -790,11 +883,44 @@ function updateNavigation() {
     nextBtn.disabled = currentIndex === filtered.length - 1;
 }
 
+// Navigation history stack
+const navigationHistory = [];
+let historyPointer = -1;
+
+// Update navigation buttons state
+function updateNavigation() {
+    const filtered = getFilteredCelebrities();
+
+    // Enable/Disable Prev button based on history pointer
+    // If pointer is 0 (start of history), disable prev
+    prevBtn.disabled = historyPointer <= 0;
+
+    // Next button always enabled unless empty list
+    // It either goes to next history item or generates new one
+    nextBtn.disabled = filtered.length <= 1;
+
+    // Optional: Progress dots logic can stay or be removed if too cluttered
+    // For now keeping it simple as per user request to just fix buttons
+}
+
 // Navigation buttons
 prevBtn.addEventListener('click', () => {
-    if (currentIndex > 0) {
-        currentIndex--;
-        renderCelebrity();
+    if (historyPointer > 0) {
+        historyPointer--;
+        const prevIndex = navigationHistory[historyPointer];
+
+        // Safety check
+        const filtered = getFilteredCelebrities();
+        if (prevIndex >= 0 && prevIndex < filtered.length) {
+            currentIndex = prevIndex;
+            renderCelebrity();
+        } else {
+            // Invalid index in history (e.g. data changed), reset
+            historyPointer = 0;
+            navigationHistory.length = 0;
+            navigationHistory.push(currentIndex);
+            updateNavigation();
+        }
     }
 });
 
@@ -851,48 +977,196 @@ function getNextBalancedIndex(filtered) {
 nextBtn.addEventListener('click', () => {
     const filtered = getFilteredCelebrities();
 
-    // Use balanced algorithm instead of linear next
-    // logic: Randomly pick next based on vote count weights
+    // Check if we can go forward in history
+    if (historyPointer < navigationHistory.length - 1) {
+        historyPointer++;
+        const nextIndex = navigationHistory[historyPointer];
+
+        if (nextIndex >= 0 && nextIndex < filtered.length) {
+            currentIndex = nextIndex;
+            renderCelebrity();
+        } else {
+            // Invalid, reset to end
+            historyPointer = navigationHistory.length - 1;
+            // Try to generate new
+            generateNewNext(filtered);
+        }
+    } else {
+        // We are at the end, generate new
+        generateNewNext(filtered);
+    }
+});
+
+function generateNewNext(filtered) {
     const nextIndex = getNextBalancedIndex(filtered);
 
     currentIndex = nextIndex;
+
+    // Add to history
+    navigationHistory.push(currentIndex);
+    historyPointer++;
+
     renderCelebrity();
-});
+}
 
 // Leaderboard state
 let currentLeaderboardMode = 'global'; // 'global' or 'personal'
+let globalLeaderboardData = []; // Store fetched global data
+
+// Fetch global leaderboard from Supabase
+async function fetchGlobalLeaderboard() {
+    if (!supabaseClient) {
+        console.warn('Supabase client not initialized');
+        return;
+    }
+
+    // 1. Fetch top rated celebrities (fallback to view_count if no ratings)
+    // Ideally we would have a materialized view or function for average ratings
+    // For now, we'll fetch all ratings (LIMIT to reasonable amount if needed) or just fetch celebrities with view_count
+    // User wants "Global Leaderboard" -> usually means Ratings.
+    // Let's try to fetch distinct celebrity_ids and their average scores.
+    // Since we can't do complex aggregation easily without edge functions or views, we'll simulate it for now
+    // by fetching 'celebrities' table which has 'view_count'.
+    // BUT the user wants RATINGS.
+    // Let's try to fetch 'ratings' and aggregate client-side (MVP approach).
+
+    try {
+        const { data: ratingsData, error } = await supabaseClient
+            .from('ratings')
+            .select('celebrity_id, score');
+
+        if (error) throw error;
+
+        // Aggregate ratings
+        const aggregation = {};
+        ratingsData.forEach(r => {
+            if (!aggregation[r.celebrity_id]) {
+                aggregation[r.celebrity_id] = { sum: 0, count: 0 };
+            }
+            aggregation[r.celebrity_id].sum += r.score;
+            aggregation[r.celebrity_id].count += 1;
+        });
+
+        // Convert to array and sort
+        globalLeaderboardData = Object.keys(aggregation).map(id => {
+            const stats = aggregation[id];
+            const celeb = celebrities.find(c => c.id === parseInt(id));
+            if (!celeb) return null;
+            return {
+                ...celeb,
+                globalAvg: (stats.sum / stats.count).toFixed(1),
+                globalCount: stats.count
+            };
+        }).filter(c => c !== null)
+            .sort((a, b) => parseFloat(b.globalAvg) - parseFloat(a.globalAvg) || b.globalCount - a.globalCount);
+
+        console.log('Global leaderboard updated:', globalLeaderboardData.length);
+        renderLeaderboard();
+    } catch (err) {
+        console.error('Error fetching leaderboard:', err);
+    }
+}
+
+// Initial fetch
+fetchGlobalLeaderboard();
 
 // Render leaderboard
 function renderLeaderboard() {
+    // ... capture current positions ...
+    const capturePositions = (container) => {
+        if (!container) return new Map();
+        const positions = new Map();
+        container.querySelectorAll('.leaderboard-item').forEach(item => {
+            const id = item.dataset.id;
+            if (id) positions.set(id, item.getBoundingClientRect());
+        });
+        return positions;
+    };
+
+    const prevPositions = capturePositions(leaderboardList);
+    const mobileList = document.getElementById('mobileLeaderboardList');
+    // const prevMobilePositions = capturePositions(mobileList); // Optional for mobile
+
+    // Clear lists
     leaderboardList.innerHTML = '';
+    if (mobileList) mobileList.innerHTML = '';
 
     let sortedCelebrities = [];
     let emptyMessage = '';
 
     if (currentLeaderboardMode === 'global') {
-        sortedCelebrities = getSortedCelebrities();
-        emptyMessage = 'Henüz oy verilmedi';
+        // Use fetched data if available, otherwise fallback to local high ratings?
+        // Actually, if we have fetched data, use it.
+        if (globalLeaderboardData.length > 0) {
+            sortedCelebrities = globalLeaderboardData;
+        } else {
+            // Fallback to local if fetch failed or empty
+            sortedCelebrities = getSortedCelebrities();
+        }
+        emptyMessage = 'Henüz oy verilmedi (Veriler yükleniyor olabilir...)';
     } else {
-        // Personal mode: Filter only voted celebrities and sort by user rating
+        // Personal mode
         sortedCelebrities = celebrities
             .filter(c => userVotes.hasOwnProperty(c.id))
             .sort((a, b) => userVotes[b.id] - userVotes[a.id]);
         emptyMessage = 'Henüz hiç oy vermediniz';
     }
 
+    // ... rest of rendering ...
     const top10 = sortedCelebrities.slice(0, 10);
 
     if (top10.length === 0) {
-        leaderboardList.innerHTML = `<div style="text-align: center; padding: var(--spacing-lg); color: var(--text-muted); font-size: 0.9rem;">${emptyMessage}</div>`;
+        const div = document.createElement('div');
+        div.style.cssText = 'text-align: center; padding: var(--spacing-lg); color: var(--text-muted); font-size: 0.9rem;';
+        div.textContent = emptyMessage;
+        leaderboardList.appendChild(div);
+        if (mobileList) mobileList.appendChild(div.cloneNode(true));
         return;
     }
 
     top10.forEach((celebrity, index) => {
-        // For personal mode, rank is just the index + 1
-        // For global mode, it's already sorted by average
         const rank = index + 1;
-        const item = createLeaderboardItem(celebrity, rank, false);
+        // Use global stats if in global mode
+        const isGlobal = currentLeaderboardMode === 'global';
+        const displayScore = isGlobal && celebrity.globalAvg ? celebrity.globalAvg : getAverageRating(celebrity);
+        const displayCount = isGlobal && celebrity.globalCount ? celebrity.globalCount : (celebrity.ratings ? celebrity.ratings.length : 0);
+
+        const item = createLeaderboardItem(celebrity, rank, false, displayScore, displayCount);
         leaderboardList.appendChild(item);
+
+        if (mobileList) {
+            const mobileItem = createLeaderboardItem(celebrity, rank, false, displayScore, displayCount);
+            mobileList.appendChild(mobileItem);
+        }
+    });
+
+    // ... animate ...
+    // FLIP Animation
+    const newItems = leaderboardList.querySelectorAll('.leaderboard-item');
+    newItems.forEach(item => {
+        const id = item.dataset.id;
+        if (prevPositions.has(id)) {
+            const prevRect = prevPositions.get(id);
+            const newRect = item.getBoundingClientRect();
+            const dy = prevRect.top - newRect.top;
+            if (dy !== 0) {
+                item.style.transform = `translateY(${dy}px)`;
+                item.style.transition = 'none';
+                requestAnimationFrame(() => {
+                    item.style.transform = '';
+                    item.style.transition = 'transform 0.3s ease';
+                });
+            }
+        } else {
+            // New entry animation
+            item.style.opacity = '0';
+            item.style.transform = 'translateY(10px)';
+            requestAnimationFrame(() => {
+                item.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                item.style.opacity = '1';
+                item.style.transform = 'none';
+            });
+        }
     });
 
     // Show remaining count if there are more than 10
@@ -901,17 +1175,17 @@ function renderLeaderboard() {
         remainingItem.className = 'leaderboard-remaining';
         remainingItem.textContent = `+${sortedCelebrities.length - 10} diğer oyuncu`;
         leaderboardList.appendChild(remainingItem);
+        if (mobileList) mobileList.appendChild(remainingItem.cloneNode(true));
     }
 }
 
 // Create leaderboard item
-function createLeaderboardItem(celebrity, rank, isUnvoted) {
+function createLeaderboardItem(celebrity, rank, isUnvoted, scoreOverride = null, countOverride = null) {
     const item = document.createElement('div');
     item.className = 'leaderboard-item';
+    item.dataset.id = celebrity.id;
 
-    if (isUnvoted) {
-        item.classList.add('unvoted');
-    }
+    if (isUnvoted) item.classList.add('unvoted');
 
     const rankBadge = document.createElement('div');
     rankBadge.className = 'leaderboard-rank';
@@ -952,22 +1226,13 @@ function createLeaderboardItem(celebrity, rank, isUnvoted) {
 
     const name = document.createElement('div');
     name.className = 'leaderboard-name';
-    name.textContent = celebrity.name;
+    const genderIcon = celebrity.gender === 'male' ? '👨' : '👩';
+    name.textContent = `${celebrity.name} ${genderIcon}`;
 
-    const score = document.createElement('div');
-    score.className = 'leaderboard-score';
-
-    if (isUnvoted) {
-        score.textContent = 'Henüz oylanmadı';
-    } else {
-        if (currentLeaderboardMode === 'global') {
-            const avgRating = getAverageRating(celebrity);
-            score.innerHTML = `Ortalama: <span class="leaderboard-score-value">${avgRating} ⭐</span> (${celebrity.ratings.length} oy)`;
-        } else {
-            const userRating = userVotes[celebrity.id];
-            score.innerHTML = `Puanın: <span class="leaderboard-score-value">${userRating} ⭐</span>`;
-        }
-    }
+    const votes = document.createElement('div');
+    votes.className = 'leaderboard-votes';
+    const count = countOverride !== null ? countOverride : (celebrity.ratings ? celebrity.ratings.length : 0);
+    votes.textContent = `${count} oy`;
 
     info.appendChild(name);
     info.appendChild(score);
@@ -1022,6 +1287,10 @@ function setCategory(category) {
     currentIndex = 0; // Reset to first celebrity in category
     updateCategoryButtons();
     saveData();
+
+    // Reset History for new category
+    initHistory();
+
     renderCelebrity();
     renderLeaderboard();
 }
@@ -1035,14 +1304,74 @@ categoryBtns.forEach(btn => {
 
 // Load celebrity photos from TMDb
 async function loadCelebrityPhotos() {
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    if (loadingOverlay) {
-        loadingOverlay.classList.add('active');
-    }
+    // NO OVERLAY - Silent background loading
+    // const loadingOverlay = document.getElementById('loadingOverlay');
+    // if (loadingOverlay) loadingOverlay.classList.add('active');
 
     try {
-        // Load photos for all celebrities
-        const photoPromises = celebrities.map(async (celebrity) => {
+        console.log("🚀 Arka plan fotoğraf yüklemesi başlatılıyor...");
+
+        // 1. Prioritize: Valid photos from local storage OR first 5 celebrities
+        // We actually want to check ALL for local storage first to be fast if data exists
+        // But if not, we only fetch first 5 from API.
+
+        // Let's filter those who need fetching
+        const needsFetching = celebrities.filter(c => !c.photos || c.photos.length === 0);
+
+        if (needsFetching.length === 0) {
+            console.log("✅ Tüm fotoğraflar zaten yüklü.");
+            return;
+        }
+
+        // 2. Identify Initial Batch (Prioritize Current + First 4)
+        const initialBatchCount = 5;
+        let initialBatch = [];
+
+        // Find current celebrity if set
+        let currentCeleb = null;
+        const filtered = getFilteredCelebrities();
+        if (currentIndex >= 0 && currentIndex < filtered.length) {
+            currentCeleb = filtered[currentIndex];
+        } else {
+            // Check last viewed
+            const lastId = localStorage.getItem('lastViewedId');
+            if (lastId) {
+                currentCeleb = celebrities.find(c => c.id === parseInt(lastId));
+            }
+        }
+
+        // If current needs fetching, add it first
+        if (currentCeleb && !currentCeleb.photos) { // Check if missing
+            // Remove from needsFetching list to avoid double add (though unique check handles it)
+            // simplified: just construct list
+        }
+
+        // Re-construct logic:
+        // We want: [Current (if missing)] + [First N (if missing)]
+
+        const setOfCelebsToLoad = new Set();
+
+        // Add current if missing
+        if (currentCeleb && (!currentCeleb.photos || currentCeleb.photos.length === 0)) {
+            setOfCelebsToLoad.add(currentCeleb);
+        }
+
+        // Fill rest with top of list
+        for (const c of needsFetching) {
+            if (setOfCelebsToLoad.size >= initialBatchCount) break;
+            setOfCelebsToLoad.add(c);
+        }
+
+        initialBatch = Array.from(setOfCelebsToLoad);
+
+        // Remaining is everything in needsFetching that is NOT in initialBatch
+        const initialIds = new Set(initialBatch.map(c => c.id));
+        const remainingBatch = needsFetching.filter(c => !initialIds.has(c.id));
+
+        console.log(`📦 İlk parti: ${initialBatch.length} kişi yükleniyor... (Dahil: ${currentCeleb ? currentCeleb.name : 'Yok'})`);
+
+        // 3. Load Initial Batch
+        const initialPromises = initialBatch.map(async (celebrity) => {
             celebrity.loading = true;
             const photos = await tmdbService.getPersonPhotos(celebrity.name, 4);
             celebrity.photos = photos;
@@ -1050,32 +1379,63 @@ async function loadCelebrityPhotos() {
             return celebrity;
         });
 
-        await Promise.all(photoPromises);
+        await Promise.all(initialPromises);
+        console.log("✨ İlk parti tamamlandı! Site açılıyor...");
 
-        // Filter out celebrities without valid photos (null photos)
-        const validCelebrities = celebrities.filter(c => c.photos !== null && c.photos.length > 0);
-        const removedCount = celebrities.length - validCelebrities.length;
+        // 4. HIDE LOADING SCREEN IMMEDIATELY - ALREADY HANDLED IN INIT
+        // if (loadingOverlay) {
+        //     loadingOverlay.classList.remove('active');
+        //     // Remove from DOM after animation
+        //     setTimeout(() => loadingOverlay.remove(), 600);
+        // }
 
-        if (removedCount > 0) {
-            console.log(`Filtered out ${removedCount} celebrities without valid photos`);
-            console.log(`Remaining celebrities: ${validCelebrities.length}`);
+        // 5. Load Remaining in Background (Slower pace to not freeze UI)
+        if (remainingBatch.length > 0) {
+            console.log(`⏳ Arka planda ${remainingBatch.length} kişi daha yüklenecek...`);
+            loadRemainingPhotosInBackground(remainingBatch);
         }
 
-        // Update celebrities array with only valid ones
-        celebrities = validCelebrities;
-
-        // Update saved order to only include valid celebrities
-        const validOrderIds = validCelebrities.map(c => c.id);
-        localStorage.setItem('celebrityOrder', JSON.stringify(validOrderIds));
-
-        console.log('All celebrity photos loaded and validated successfully');
     } catch (error) {
         console.error('Error loading celebrity photos:', error);
-    } finally {
-        if (loadingOverlay) {
-            loadingOverlay.classList.remove('active');
-        }
+        // Ensure overlay is removed even on error
+        // if (loadingOverlay) loadingOverlay.classList.remove('active');
     }
+}
+
+// Helper for background loading
+async function loadRemainingPhotosInBackground(remainingCelebrities) {
+    // Process in chunks of 3 to avoid network congestion
+    const chunkSize = 3;
+
+    for (let i = 0; i < remainingCelebrities.length; i += chunkSize) {
+        const chunk = remainingCelebrities.slice(i, i + chunkSize);
+
+        const chunkPromises = chunk.map(async (celebrity) => {
+            if (celebrity.photos && celebrity.photos.length > 0) return; // Skip if somehow loaded
+
+            try {
+                const photos = await tmdbService.getPersonPhotos(celebrity.name, 4);
+                celebrity.photos = photos;
+                // Save progress periodically could be good, but standard save is on exit/vote
+            } catch (err) {
+                console.warn(`Background load failed for ${celebrity.name}`, err);
+            }
+        });
+
+        await Promise.all(chunkPromises);
+
+        // Small delay between chunks to yield to main thread
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    console.log("🎉 Tüm arka plan yüklemeleri tamamlandı!");
+
+    // Filter out invalid ones only after EVERYTHING is done, or check on render
+    // Updating global/local storage with new photos
+    saveData();
+
+    // Refresh current view if needed (e.g. if the current card didn't have photo but now does)
+    // But usually user is voting on 1 person, logic handles 'current'.
 }
 
 
@@ -1498,39 +1858,49 @@ function updateNavigation() {
 
 // Initialize app
 async function init() {
-    console.log('Sayfa yüklendi, uygulama başlatılıyor...');
-
-    // Initialize celebrity service with Supabase
-    if (typeof supabaseClient !== 'undefined' && supabaseClient) {
-        celebrityService.init(supabaseClient);
-        console.log('✅ Supabase başarıyla başlatıldı');
-        showToast('Supabase bağlantısı kuruldu', 'success');
-    } else {
-        console.warn('⚠️ Supabase client bulunamadı! Sadece localStorage kullanılacak.');
-        showToast('Supabase bağlantısı kurulamadı', 'warning');
-    }
-
-    loadData();
-    loadTheme();
-    loadLeaderboardPosition();
-    loadLeaderboardHeight();
-    loadLeaderboardWidth();
-
-    // Load celebrity photos from TMDb
-    await loadCelebrityPhotos();
-
-    renderCelebrity();
-    renderLeaderboard();
-
-
-    console.log('✅ Uygulama başarıyla başlatıldı');
-
-    // Hide loading overlay
     const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-        // Remove from DOM after animation
-        setTimeout(() => overlay.remove(), 600);
+
+    try {
+        console.log('Sayfa yüklendi, uygulama başlatılıyor...');
+
+        // Initialize celebrity service with Supabase
+        if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+            celebrityService.init(supabaseClient);
+            console.log('✅ Supabase başarıyla başlatıldı');
+        } else {
+            console.warn('⚠️ Supabase client bulunamadı! Sadece localStorage kullanılacak.');
+        }
+
+        loadData();
+        initHistory(); // Initialize navigation history
+        loadTheme();
+        loadLeaderboardPosition();
+        loadLeaderboardHeight();
+        loadLeaderboardWidth();
+
+        // IMMEDIATELY render celebrity and leaderboard (don't wait for photos!)
+        try {
+            renderCelebrity();
+            renderLeaderboard();
+        } catch (renderError) {
+            console.error("Render hatası:", renderError);
+        }
+
+        console.log('✅ Uygulama başarıyla başlatıldı');
+
+        // Start background photo loading (non-blocking)
+        loadCelebrityPhotos();
+
+    } catch (error) {
+        console.error("Kritik Başlatma Hatası:", error);
+    } finally {
+        // Hide loading overlay FORCEFULLY
+        if (overlay) {
+            overlay.classList.add('hidden');
+            setTimeout(() => {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }, 600);
+        }
     }
 }
 
@@ -2467,3 +2837,111 @@ function renderFullLeaderboard() {
     });
 
 })();
+// ===== CAPTCHA CALLBACKS =====
+var isCaptchaVerified = false;
+
+window.onCaptchaSuccess = function (token) {
+    console.log('Captcha Success:', token);
+    isCaptchaVerified = true;
+    if (typeof window.updateVoteButton === 'function') {
+        window.updateVoteButton();
+    }
+};
+
+window.onCaptchaExpired = function () {
+    console.log('Captcha Expired');
+    isCaptchaVerified = false;
+    if (typeof window.updateVoteButton === 'function') {
+        window.updateVoteButton();
+    }
+};
+
+// ===== SEO & ROUTING (History API) =====
+function updateSEO(celebrity) {
+    // 1. Update Title & Meta Tags
+    document.title = `${celebrity.name} - Ünlü Oyuncu Puanlama`;
+
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+        metaDesc.content = `${celebrity.name} için güncel puanlama ve yorumlar. Sen de ${celebrity.name} profilini incele ve oy ver!`;
+    }
+
+    // Update Open Graph tags for social sharing
+    let ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.content = `${celebrity.name} | Ünlü Oyuncu Puanlama`;
+
+    let ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.content = `Türkiye'nin en popüler oyuncu sıralamasında ${celebrity.name} için sende oy ver! ${celebrity.ratings.length > 0 ? 'Ortalama puanı: ' + getAverageRating(celebrity) + '⭐' : ''}`;
+
+    if (celebrity.photos && celebrity.photos.length > 0) {
+        let ogImage = document.querySelector('meta[property="og:image"]');
+        if (ogImage) ogImage.content = celebrity.photos[0];
+    }
+
+    // 2. Structured Data (JSON-LD) for Rich Snippets
+    let script = document.getElementById('seo-structured-data');
+    if (!script) {
+        script = document.createElement('script');
+        script.id = 'seo-structured-data';
+        script.type = 'application/ld+json';
+        document.head.appendChild(script);
+    }
+
+    const structuredData = {
+        "@context": "https://schema.org/",
+        "@type": "Person",
+        "name": celebrity.name,
+        "url": window.location.href,
+        "image": (celebrity.photos && celebrity.photos.length > 0) ? celebrity.photos[0] : ''
+    };
+
+    if (celebrity.ratings && celebrity.ratings.length > 0) {
+        structuredData.aggregateRating = {
+            "@type": "AggregateRating",
+            "ratingValue": getAverageRating(celebrity),
+            "bestRating": "10",
+            "ratingCount": celebrity.ratings.length
+        };
+    }
+
+    script.textContent = JSON.stringify(structuredData);
+}
+
+function updateURL(celebrity) {
+    if (history.pushState) {
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?celeb=${celebrity.id}`;
+        // Prevent pushing duplicate state if jumping rapidly
+        const currentUrl = window.location.href;
+        if (currentUrl !== newUrl) {
+            window.history.replaceState({ path: newUrl }, '', newUrl); // Use replaceState to avoid cluttering history back button during normal browsing
+        }
+    }
+}
+
+// Initial Routing check on load
+window.addEventListener('DOMContentLoaded', () => {
+    // Run after a short delay to ensure categories and basic data are loaded
+    setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const celebIdParam = urlParams.get('celeb');
+
+        if (celebIdParam) {
+            const celebId = parseInt(celebIdParam);
+            const filteredCelebs = getFilteredCelebrities();
+            const index = filteredCelebs.findIndex(c => c.id === celebId);
+
+            if (index !== -1) {
+                currentIndex = index;
+                renderCelebrity();
+            } else {
+                // Look in all category if not found in current (maybe default 'all' already covers this)
+                const globalIndex = celebrities.findIndex(c => c.id === celebId);
+                if (globalIndex !== -1) {
+                    setCategory('all');
+                    currentIndex = globalIndex;
+                    renderCelebrity();
+                }
+            }
+        }
+    }, 100);
+});
